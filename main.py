@@ -13,10 +13,13 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision
+import wandb
 
 from averagemeter import AverageMeter
+from dataloader import get_dataloader
 import resnet
-import wandb
+import densenet
+
 
 best_prec1 = 0
 
@@ -54,46 +57,10 @@ def get_model(model_str):
         return resnet.resnet56()
     if model_str == "cifar10_resnet110":
         return resnet.resnet110()
+    if model_str == "cifar10_densenet121":
+        return densenet.densenet121()
     else:
         raise Exception()
-
-def get_dataloader(dataset_str, random_seed = 0, train_ratio = 0.8, batch_size_train = 128, batch_size_validation = 128, batch_size_test = 128):
-    batch_size_train = 128
-    batch_size_validation  = 128
-    batch_size_test  = 128
-    
-    if dataset_str == 'binary_mnist':
-        dataset_train = torchvision.datasets.MNIST(root = 'Datasets/', train = True, download=True, transform=torchvision.transforms.Compose([ torchvision.transforms.ToTensor(), torchvision.transforms.Normalize((0.1307,), (0.3081,))]), target_transform=lambda x : x % 2)
-        dataset_test  = torchvision.datasets.MNIST(root = 'Datasets/', train = False, download = True, transform=torchvision.transforms.Compose([ torchvision.transforms.ToTensor(), torchvision.transforms.Normalize((0.1307,), (0.3081,))]), target_transform = lambda x : x % 2)
-        test_loader = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size_test, shuffle=True)        
-
-    if dataset_str == 'cifar10':
-        # cf https://gist.github.com/weiaicunzai/e623931921efefd4c331622c344d8151 for normalization
-        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        dataset_train = datasets.CIFAR10(root='Datasets/CIFAR10', train=True, transform=transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, 4),
-            transforms.ToTensor(),
-            normalize,
-        ]), download=True)
-        testset = torchvision.datasets.CIFAR10(root='Datasets/CIFAR10', train = False, download = True, transform = transforms.Compose([ transforms.ToTensor(), normalize ]))
-        test_loader = torch.utils.data.DataLoader(testset, batch_size = batch_size_test, shuffle = False)
-
-    if dataset_str == 'cifar100':
-        cifar_mean = (0.5071, 0.4867, 0.4408)
-        cifar_std  = (0.2673, 0.2564, 0.2761)
-        t = torchvision.transforms.Compose( [torchvision.transforms.ToTensor(), torchvision.transforms.Normalize(cifar_mean, cifar_std)] )
-        dataset_train = torchvision.datasets.CIFAR100(root='Datasets/CIFAR100', train = True, download = True, transform = t)
-        testset = torchvision.datasets.CIFAR100(root='Datasets/CIFAR100', train = False, download = True, transform = t)
-        test_loader = torch.utils.data.DataLoader(testset, batch_size = batch_size_test, shuffle = False)
-    
-    ###
-    dataset_train, dataset_validation = torch.utils.data.random_split(dataset_train, [train_ratio, 1.0 - train_ratio], generator=torch.Generator().manual_seed(random_seed))
-    train_loader = torch.utils.data.DataLoader(dataset_train, batch_size = batch_size_train, shuffle = True)
-    validation_loader = torch.utils.data.DataLoader(dataset_validation, batch_size = batch_size_validation, shuffle=True)
-
-    return train_loader, validation_loader, test_loader
-
 ## 
 
 def train(train_loader, model, criterion, optimizer, epoch):
@@ -205,10 +172,10 @@ parser = argparse.ArgumentParser(description='')
 parser.add_argument('--model_str', default='cifar10_resnet20')
 parser.add_argument('--dataset_str', default='cifar10')
 parser.add_argument('--save_dir', default='default_dir')
-parser.add_argument('--train_ratio', default=0.8)
-parser.add_argument('--random_seed', default=42, help='random seed for vlaidation split')
+parser.add_argument('--train_ratio', default=0.9, type=float)
+parser.add_argument('--random_seed', default=42, help='random seed for validation split', type=int)
 parser.add_argument('--bool_train_model', default=True)
-parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
+parser.add_argument('--epochs', default=50, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--lr', default=0.1, type=float,metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum')
 parser.add_argument('--weight_decay', '--wd', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)')
@@ -230,7 +197,6 @@ def main(args):
     if save_dir == 'default_dir':
         save_dir = f'{dataset_str}.{model_str}'
 
-
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -238,7 +204,9 @@ def main(args):
         "learning_rate": lr,
         "epochs": epochs,
         "dataset" : dataset_str,
-        "architecture" : model_str
+        "architecture" : model_str,
+        "random_seed" : random_seed,
+        "train_ratio" : train_ratio
     })
 
     model = get_model(model_str)
@@ -251,7 +219,10 @@ def main(args):
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr, momentum = momentum, weight_decay = weight_decay)
 
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150], last_epoch=-1)
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150], last_epoch = -1)
+    if model_str == "resnet110":
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = args.lr*0.1
 
     best_prec1 = 0
 
@@ -276,8 +247,9 @@ def main(args):
             }, is_best, filename=os.path.join(save_dir, 'checkpoint.th'))
 
         save_checkpoint({
-            'state_dict': model.state_dict(),
-            'best_prec1': best_prec1,
+                'training_args' : args,
+                'state_dict': model.state_dict(),
+                'best_prec1': best_prec1,
         }, is_best, filename=os.path.join(save_dir, 'model.th'))
 
 
