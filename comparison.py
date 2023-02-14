@@ -90,13 +90,14 @@ def config():
     model_type = "resnet20"
     dataset_str = "cifar10"
     random_seed = 42
-    train_ratio = 0.8
+    train_ratio = 0.9
 
 @exp.automain
 def main(model_path, model_type, dataset_str, random_seed, train_ratio):
     num_classes = {
         "cifar10" : 10,
-        "cifar100": 100
+        "cifar100": 100,
+        "svhn" : 10
     }[dataset_str]
 
     _, validation_loader, test_loader = get_dataloader(dataset_str, random_seed, train_ratio, batch_size_train = 128, batch_size_validation = 128, batch_size_test = 128)
@@ -107,7 +108,7 @@ def main(model_path, model_type, dataset_str, random_seed, train_ratio):
     print(f'Classification error : {get_classification_error(test_logits, test_labels)}') 
 
     temperature_ts = find_optimal_temperature_temperature_scaling(validation_logits, validation_labels)
-    temperature_ec = find_optimal_temperature_expectation_consistency(test_logits, test_labels)
+    temperature_ec = find_optimal_temperature_expectation_consistency(validation_logits, validation_labels)
 
     test_ece      = get_model_ece(test_logits, test_labels, num_classes)
     test_ece_ts   = get_model_ece(test_logits / temperature_ts, test_labels, num_classes)

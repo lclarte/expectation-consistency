@@ -59,6 +59,10 @@ def get_model(model_str):
         return resnet.resnet110()
     if model_str == "cifar10_densenet121":
         return densenet.densenet121()
+    if model_str == "cifar10_densenet169":
+        return densenet.densenet169()
+    if model_str == "cifar10_densenet201":
+        return densenet.densenet201()
     else:
         raise Exception()
 ## 

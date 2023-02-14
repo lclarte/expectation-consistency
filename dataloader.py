@@ -4,10 +4,16 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision
 
+import random
+
 def get_dataloader(dataset_str, random_seed = 0, train_ratio = 0.8, batch_size_train = 128, batch_size_validation = 128, batch_size_test = 128):
     batch_size_train = 128
     batch_size_validation  = 128
     batch_size_test  = 128
+
+    # useful for random transforms
+    random.seed(random_seed)
+    torch.random.manual_seed(random_seed)
     
     if dataset_str == 'binary_mnist':
         dataset_train = torchvision.datasets.MNIST(root = 'Datasets/', train = True, download=True, transform=torchvision.transforms.Compose([ torchvision.transforms.ToTensor(), torchvision.transforms.Normalize((0.1307,), (0.3081,))]), target_transform=lambda x : x % 2)
@@ -35,6 +41,12 @@ def get_dataloader(dataset_str, random_seed = 0, train_ratio = 0.8, batch_size_t
         dataset_test = torchvision.datasets.CIFAR100(root='Datasets/CIFAR100', train = False, download = True, transform = t)
         # NOTE : here train_ratio will be size of validation set (ugly)
         dataset_validation, dataset_test = torch.utils.data.random_split(dataset_test, [train_ratio, 1.0 - train_ratio], generator=torch.Generator().manual_seed(random_seed))
+
+    if dataset_str == 'svhn':
+        pre_process = transforms.Compose([transforms.ToTensor()])
+        dataset_train = torchvision.datasets.SVHN(root = 'Datasets/SVHN', split='train', download = True, transform = pre_process)
+        dataset_test  = torchvision.datasets.SVHN(root = 'Datasets/SVHN', split='test', download = True, transform = pre_process)
+        dataset_train, dataset_validation = torch.utils.data.random_split(dataset_train, [train_ratio, 1.0 - train_ratio], generator=torch.Generator().manual_seed(random_seed))    
     
     ###
     
