@@ -250,11 +250,14 @@ def main(args):
                 'best_prec1': best_prec1,
             }, is_best, filename=os.path.join(save_dir, 'checkpoint.th'))
 
+        """
         save_checkpoint({
                 'training_args' : args,
                 'state_dict': model.state_dict(),
                 'best_prec1': best_prec1,
         }, is_best, filename=os.path.join(save_dir, 'model.th'))
+        """
+        torch.save(model.state_dict(), os.path.join(save_dir, 'model.th'))
 
 
 if __name__ == "__main__":
