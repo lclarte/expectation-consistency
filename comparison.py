@@ -6,7 +6,7 @@ import torch.nn.functional as functional
 
 import calibration as uncertaintycalibration
 import densenet, resnet
-from dataloader import get_dataloader
+from dataloader import get_dataloader, get_dataloader_noisy_validation_data
 
 exp = sacred.Experiment("exp_calibration")
 
@@ -91,16 +91,22 @@ def config():
     dataset_str = "cifar10"
     random_seed = 42
     train_ratio = 0.9
+    flip_ratio  = 1.0
 
 @exp.automain
-def main(model_path, model_type, dataset_str, random_seed, train_ratio):
+def main(model_path, model_type, dataset_str, random_seed, train_ratio, flip_ratio):
     num_classes = {
         "cifar10" : 10,
+        "cifar10_noisy" : 10,
         "cifar100": 100,
-        "svhn" : 10
+        "svhn" : 10,
+        "svhn_noisy" : 10
     }[dataset_str]
 
-    _, validation_loader, test_loader = get_dataloader(dataset_str, random_seed, train_ratio, batch_size_train = 128, batch_size_validation = 128, batch_size_test = 128)
+    if 'noisy' in dataset_str:
+        _, validation_loader, test_loader = get_dataloader_noisy_validation_data(dataset_str, random_seed, train_ratio, batch_size_train = 128, batch_size_validation = 128, batch_size_test = 128, flip_ratio=flip_ratio)
+    else:
+        _, validation_loader, test_loader = get_dataloader(dataset_str, random_seed, train_ratio, batch_size_train = 128, batch_size_validation = 128, batch_size_test = 128)
     model = load_model(model_path, model_type)
 
     validation_logits, validation_labels = get_logits_and_labels_from_data(model, validation_loader)
